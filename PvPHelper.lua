@@ -1,19 +1,21 @@
 -----------------------------------------------------------------------------------------------
 -- Client Lua Script for PvPHelper
--- Copyright (c) NCsoft. All rights reserved
+-- by orbv - Bloodsworn - Dominion
 -----------------------------------------------------------------------------------------------
  
 require "Window"
+require "Apollo"
  
 -----------------------------------------------------------------------------------------------
 -- PvPHelper Module Definition
 -----------------------------------------------------------------------------------------------
-local PvPHelper = {} 
+local PvPHelper = {db} 
  
 -----------------------------------------------------------------------------------------------
 -- Constants
 -----------------------------------------------------------------------------------------------
 -- e.g. local kiExampleVariableMax = 999
+local glog
  
 -----------------------------------------------------------------------------------------------
 -- Initialization
@@ -32,9 +34,11 @@ function PvPHelper:Init()
 	local bHasConfigureFunction = false
 	local strConfigureButtonText = ""
 	local tDependencies = {
-		-- "UnitOrPackageName",
+		--"Gemini:Logging-1.2",
 	}
     Apollo.RegisterAddon(self, bHasConfigureFunction, strConfigureButtonText, tDependencies)
+
+	self.db = Apollo.GetPackage("Gemini:DB-1.0").tPackage:New(self)
 end
  
 
@@ -67,9 +71,11 @@ function PvPHelper:OnDocLoaded()
 		-- Register handlers for events, slash commands and timer, etc.
 		-- e.g. Apollo.RegisterEventHandler("KeyDown", "OnKeyDown", self)
 		Apollo.RegisterSlashCommand("pvphelper", "OnPvPHelperOn", self)
-		Apollo.RegisterEventHandler("MatchEntered", "OnPVPMatchEntered" self)
+		Apollo.RegisterEventHandler("MatchEntered", "OnPVPMatchEntered", self)
 		Apollo.RegisterEventHandler("MatchExited", "OnPVPMatchExited", self)
 		Apollo.RegisterEventHandler("PvpRatingUpdated", "OnPVPRatingUpdated", self)
+		Apollo.RegisterEventHandler("PVPMatchStateUpdated", "OnPVPMatchStateUpdated", self)	
+		Apollo.RegisterEventHandler("PVPMatchFinished", "OnPVPMatchFinished", self)	
 
 		-- Do additional Addon initialization here
 		-- Maybe the UI reloaded so be sure to check if we are in a match already
@@ -80,6 +86,10 @@ function PvPHelper:OnDocLoaded()
 				self:OnPVPMatchEntered()
 			end
 		end
+		
+		--self.db.char.playerName = GameLib.GetPlayerUnit():GetName()
+		Event_FireGenericEvent("SendVarToRover", "GeminiDB", self.db)
+		Print(self.db.char.playerName)
 	end
 end
 
@@ -87,16 +97,33 @@ end
 -- PvPHelper Events
 -----------------------------------------------------------------------------------------------
 
-function PvPHelper:OnPVPMatchEntered(tEventArgs)
-
+function PvPHelper:OnPVPMatchEntered()
+	local info = MatchingGame.GetPVPMatchState()
+	Event_FireGenericEvent("SendVarToRover", "PVPMatchEntered", info)
+	--glog:debug("PvPHelper OnPVPMatchEntered(): %s", info)
 end
 
-function PvPHelper:OnPVPMatchExited(tEventArgs)
-
+function PvPHelper:OnPVPMatchExited()
+	--glog:debug("PvPHelper OnPVPMatchExited()")
 end
 
-function PvPHelper:OnPVPRatingUpdated(tEventArgs)
+function PvPHelper:OnPVPRatingUpdated()
+	--glog:debug("PvPHelper OnPVPRatingUpdated()")
+end
 
+function PvPHelper:OnPVPMatchStateUpdated()
+	local result = MatchingGame
+	Event_FireGenericEvent("SendVarToRover", "PVPMatchStateUpdated", result)
+end
+
+function PvPHelper:OnPVPMatchFinished(eWinner, eReason)
+	local result = {["Winner"] = eWinner, ["Reason"] = eReason, ["Team"] = MatchingGame.Team}
+	if self.db.char.MatchHistory = nil then
+		self.db.char.MatchHistory = {}
+	end
+	table.insert(self.db.char.MatchHistory, result)
+	Event_FireGenericEvent("SendVarToRover", "PVPMatchFinished", self.db.char.MatchHistory)
+	--glog:debug("PvPHelper OnPVPMatchFinished(): %s", result)
 end
 
 -----------------------------------------------------------------------------------------------
