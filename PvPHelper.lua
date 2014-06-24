@@ -19,7 +19,6 @@ local PvPHelper = {
 -- Constants
 -----------------------------------------------------------------------------------------------
 -- e.g. local kiExampleVariableMax = 999
-local glog
 
 local ktPvPEvents =
 {
@@ -99,15 +98,14 @@ function PvPHelper:OnDocLoaded()
 		
 		-- Register handlers for events, slash commands and timer, etc.
 		-- e.g. Apollo.RegisterEventHandler("KeyDown", "OnKeyDown", self)
-		Apollo.RegisterSlashCommand("pvphelperclear", "OnPvPHelperClear", self)
-		Apollo.RegisterSlashCommand("pvphelper", "OnPvPHelperOn", self)
-		Apollo.RegisterEventHandler("MatchEntered", "OnPVPMatchEntered", self)
-		Apollo.RegisterEventHandler("MatchExited", "OnPVPMatchExited", self)
-		Apollo.RegisterEventHandler("PvpRatingUpdated", "OnPVPRatingUpdated", self)
+		Apollo.RegisterSlashCommand("pvphelperclear",       "OnPvPHelperClear", self)
+		Apollo.RegisterSlashCommand("pvphelper",            "OnPvPHelperOn", self)
+		Apollo.RegisterEventHandler("MatchEntered",         "OnPVPMatchEntered", self)
+		Apollo.RegisterEventHandler("MatchExited",          "OnPVPMatchExited", self)
+		Apollo.RegisterEventHandler("PvpRatingUpdated",     "OnPVPRatingUpdated", self)
 		Apollo.RegisterEventHandler("PVPMatchStateUpdated", "OnPVPMatchStateUpdated", self)	
-		Apollo.RegisterEventHandler("PVPMatchFinished", "OnPVPMatchFinished", self)	
-		Apollo.RegisterEventHandler("PublicEventStart", "OnPublicEventStart", self)
-		--Apollo.RegisterEventHandler("PublicEventEnd", "OnPublicEventEnd", self)
+		Apollo.RegisterEventHandler("PVPMatchFinished",     "OnPVPMatchFinished", self)	
+		Apollo.RegisterEventHandler("PublicEventStart",     "OnPublicEventStart", self)
 
 		-- Do additional Addon initialization here
 		-- Maybe the UI reloaded so be sure to check if we are in a match already
@@ -117,6 +115,12 @@ function PvPHelper:OnDocLoaded()
 			if tMatchState ~= nil then
 				self:OnPVPMatchEntered()
 			end
+		end
+		
+		-- Do the same for public event
+		local tActiveEvents = PublicEvent.GetActiveEvents()
+		for idx, peEvent in pairs(tActiveEvents) do
+			self:OnPublicEventStart(peEvent)
 		end
 	end
 end
