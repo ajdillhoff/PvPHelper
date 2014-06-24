@@ -19,22 +19,11 @@ local PvPHelper = {
 -- Constants
 -----------------------------------------------------------------------------------------------
 
--- TODO: ktPvPEvents may not be needed
-local ktPvPEvents =
-{
-	[PublicEvent.PublicEventType_PVP_Arena] 					         	= true,
-	[PublicEvent.PublicEventType_PVP_Warplot] 									= true,
-	[PublicEvent.PublicEventType_PVP_Battleground_Vortex] 			= true,
-	[PublicEvent.PublicEventType_PVP_Battleground_Cannon] 			= true,
-	[PublicEvent.PublicEventType_PVP_Battleground_Sabotage]			= true,
-	[PublicEvent.PublicEventType_PVP_Battleground_HoldTheLine] 	= true,
-}
-
 -- TODO: This will be expanded to a table if more views are added
 local kEventTypeToWindowName = "ResultGrid"
 
 local tDataKeys = {
-	"sDate",
+	"tDate",
 	"sGameType",
 	"sResult",
 	"sRating",
@@ -131,20 +120,24 @@ end
 -----------------------------------------------------------------------------------------------
 
 function PvPHelper:OnPVPMatchEntered()
+	local tDate = GameLib:GetLocalTime()
+	tDate["nTickCount"] = GameLib:GetTickCount()
+
 	self.currentMatch = {
-		["sDate"]     = PvPHelper:GetDateString(),
+		["tDate"]     = tDate,
 		["sGameType"] = "N/A",
 		["sResult"]   = "N/A", 
 		["sRating"]   = "N/A"
 	}
 
 	-- DEBUG
-	Event_FireGenericEvent("SendVarToRover", "OnPVPMatchEntered", self.currentMatch)
+	--Event_FireGenericEvent("SendVarToRover", "OnPVPMatchEntered", self.currentMatch)
 end
 
 function PvPHelper:OnPVPMatchExited()
 	if self.currentMatch then
 		-- User left before match finished. TODO: Determine if incomplete data should be stored
+		self.currentMatch = {}
 	end
 end
 
@@ -178,7 +171,7 @@ function PvPHelper:OnPublicEventStart(peEvent)
 	self.currentMatch["sGameType"] = strType
 	
 	-- DEBUG
-	Event_FireGenericEvent("SendVarToRover", "OnPublicEventStart", self.currentMatch)
+	--Event_FireGenericEvent("SendVarToRover", "OnPublicEventStart", self.currentMatch)
 end
 
 -----------------------------------------------------------------------------------------------
@@ -199,30 +192,8 @@ function PvPHelper:OnPvPHelperClear()
 	self.pvphelperdb.MatchHistory = {}
 end
 
--- DEPRECATED
-function PvPHelper:GetReasonString(eReason)
-	if eReason == 0 then
-		return "Complete"
-	elseif eReason == 1 then
-		return "Forfeit"
-	else 
-		return "Time Out"
-	end
-end
-
--- DEPRECATED
-function PvPHelper:GetWinnerString(eWinner)
-	if eWinner == 0 then
-		return "Exile"
-	else
-		return "Dominion"
-	end
-end
-
-function PvPHelper:GetDateString()
-	local tDate = GameLib:GetLocalTime()
-	
-	local strDate = string.format("%d/%d/%d %s", tDate["nMonth"], tDate["nMonth"], tDate["nYear"], tDate["strFormattedTime"])
+function PvPHelper:GetDateString(tDate)	
+	local strDate = string.format("%02d/%02d/%4d %s", tDate["nMonth"], tDate["nDay"], tDate["nYear"], tDate["strFormattedTime"])
 	return strDate
 end
 
@@ -274,15 +245,6 @@ end
 -----------------------------------------------------------------------------------------------
 -- PvPHelperForm Functions
 -----------------------------------------------------------------------------------------------
--- when the OK button is clicked
-function PvPHelper:OnOK()
-	self.wndMain:Close() -- hide the window
-end
-
--- when the Cancel button is clicked
-function PvPHelper:OnCancel()
-	self.wndMain:Close() -- hide the window
-end
 
 function PvPHelper:HelperBuildGrid(wndParent, tData)
 	if not tData then
@@ -296,7 +258,7 @@ function PvPHelper:HelperBuildGrid(wndParent, tData)
 
 	local nVScrollPos 	= wndGrid:GetVScrollPos()
 	local nSortedColumn	= wndGrid:GetSortColumn() or 1
-	local bAscending 	  = wndGrid:IsSortAscending()
+	local bAscending 	= wndGrid:IsSortAscending()
 	
 	wndGrid:DeleteAll()
 	
@@ -306,13 +268,23 @@ function PvPHelper:HelperBuildGrid(wndParent, tData)
 
 		for col, sDataKey in pairs(tDataKeys) do
 			local value = tMatch[sDataKey]
-			wndResultGrid:SetCellText(row, col, value)
+			if type(value) == "table" then
+				wndResultGrid:SetCellSortText(row, col, value["nTickCount"])
+				wndResultGrid:SetCellText(row, col, self:GetDateString(value))
+			else
+				wndResultGrid:SetCellSortText(row, col, value)
+				wndResultGrid:SetCellText(row, col, value)
+			end
 		end
 	end
 
 	wndGrid:SetVScrollPos(nVScrollPos)
-	--wndGrid:SetSortColumn(nSortedColumn, bAscending)
+	wndGrid:SetSortColumn(nSortedColumn, bAscending)
 
+end
+
+function PvPHelper:OnClose( wndHandler, wndControl )
+	self.wndMain:Close()
 end
 
 -----------------------------------------------------------------------------------------------
