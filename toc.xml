@@ -2,6 +2,6 @@
 <Addon Author="orbv" APIVersion="8" Name="PvPHelper" Description="Records PvP match history and details.">
 	<Script Name="libs\GeminiDB\GeminiDB-1.0.lua"/>
 	<Script Name="libs\GeminiPackages.lua"/>
-    <Script Name="PvPHelper.lua"/>
-    <Form Name="PvPHelper.xml"/>
+  <Script Name="PvPHelper.lua"/>
+  <Form Name="PvPHelper.xml"/>
 </Addon>
