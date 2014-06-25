@@ -19,14 +19,37 @@ local PvPHelper = {
 -- Constants
 -----------------------------------------------------------------------------------------------
 
+local ktRatingTypeToMatchType = {
+	MatchingGame.RatingType.Arena2v2          = MatchingGame.MatchType.Arena,
+	MatchingGame.RatingType.Arena3v3          = MatchingGame.MatchType.Arena,
+	MatchingGame.RatingType.Arena5v5          = MatchingGame.MatchType.Arena,
+	MatchingGame.RatingType.RatedBattleground = MatchingGame.MatchType.RatedBattleground,
+	MatchingGame.RatingType.Warplot           = MatchingGame.MatchType.Warplot,
+}
+
+local ktMatchTypes =
+{
+	MatchingGame.MatchType.Battleground      = "Battleground",
+	MatchingGame.MatchType.Arena             = "Rated Arena",
+	MatchingGame.MatchType.Warplot           = "Warplot",
+	MatchingGame.MatchType.RatedBattleground = "Rated Battleground",
+	MatchingGame.MatchType.OpenArena         = "Arena"
+}
+
+local eResultTypes = {
+	Win     = 0,
+	Loss    = 1,
+	Forfeit = 2
+}
+
 -- TODO: This will be expanded to a table if more views are added
 local kEventTypeToWindowName = "ResultGrid"
 
 local tDataKeys = {
 	"tDate",
-	"sGameType",
-	"sResult",
-	"sRating",
+	"nGameType",
+	"nResult",
+	"tRating",
 }
 
 -----------------------------------------------------------------------------------------------
@@ -95,7 +118,7 @@ function PvPHelper:OnDocLoaded()
 		Apollo.RegisterEventHandler("PvpRatingUpdated",     "OnPVPRatingUpdated", self)
 		-- Apollo.RegisterEventHandler("PVPMatchStateUpdated", "OnPVPMatchStateUpdated", self)	
 		Apollo.RegisterEventHandler("PVPMatchFinished",     "OnPVPMatchFinished", self)	
-		Apollo.RegisterEventHandler("PublicEventStart",     "OnPublicEventStart", self)
+		--Apollo.RegisterEventHandler("PublicEventStart",     "OnPublicEventStart", self)
 
 		-- TODO: I feel that this could be done in a more elegant way, clean it up later
 		-- Maybe the UI reloaded so be sure to check if we are in a match already
@@ -108,10 +131,10 @@ function PvPHelper:OnDocLoaded()
 			end
 
 			-- Do the same for public event
-			local tActiveEvents = PublicEvent.GetActiveEvents()
-			for idx, peEvent in pairs(tActiveEvents) do
-				self:OnPublicEventStart(peEvent)
-			end
+			-- local tActiveEvents = PublicEvent.GetActiveEvents()
+			-- for idx, peEvent in pairs(tActiveEvents) do
+			-- 	self:OnPublicEventStart(peEvent)
+			-- end
 		end
 	end
 end
@@ -122,32 +145,31 @@ end
 
 function PvPHelper:OnPVPMatchEntered()
 	local tDate = GameLib:GetLocalTime()
+	local nMatchType = self:GetMatchType()
+
 	tDate["nTickCount"] = GameLib:GetTickCount()
-	local tRating = MatchingGame.GetPvpRating(MatchingGame.RatingType.RatedBattleground)
 
 	self.currentMatch = {
-		["tDate"]     = tDate,
-		["sGameType"] = "N/A",
-		["sResult"]   = "N/A", 
-		["sRating"]   = "N/A",
-		["nBGRating"] = tRating["nRating"]
+		["tDate"]      = tDate,
+		["nMatchType"] = nMatchType,
+		["nResult"]    = nil, 
+		["tRating"]    = {
+			["nBeginRating"] = self:GetCurrentRating(nMatchType),
+			["nEndRating"]   = nil
+		}
 	}
 end
 
 function PvPHelper:OnPVPMatchExited()
 	if self.currentMatch then
 		-- User left before match finished.
-		self.currentMatch["sResult"] = "Forfeit"
+		self.currentMatch["nResult"] = eResultTypes.Forfeit
 		self:UpdateMatchHistory(self.currentMatch)
 	end
 end
 
--- TODO: It would be better to update personal BG rating before this call is made.
---       Possible if the rating change is passed via another event.
-function PvPHelper:OnPVPRatingUpdated(eType)
-	if eType == MatchingGame.RatingType["RatedBattleground"] then
-		self:UpdateBattlegroundRating()
-	end
+function PvPHelper:OnPVPRatingUpdated(eRatingType)
+	self:UpdateRating(eRatingType)
 end
 
 function PvPHelper:OnPVPMatchFinished(eWinner, eReason, nDeltaTeam1, nDeltaTeam2)
@@ -162,12 +184,14 @@ function PvPHelper:OnPVPMatchFinished(eWinner, eReason, nDeltaTeam1, nDeltaTeam2
 		eMyTeam = tMatchState.eMyTeam
 	end	
 	
-	self.currentMatch["sResult"] = self:GetResultString(eMyTeam, eWinner)
-	self.currentMatch["sRating"] = self:GetArenaRatingString(tMatchState, tRatingDeltas)
+	self.currentMatch["nResult"] = self:GetResult(eMyTeam, eWinner)
+	-- TODO: This may not be necessary at all if using OnPVPRatingUpdated()
+	--self.currentMatch["sRating"] = self:GetArenaRatingString(tMatchState, tRatingDeltas)
 
 	self:UpdateMatchHistory(self.currentMatch)
 end
 
+-- DEPRECATED
 function PvPHelper:OnPublicEventStart(peEvent)
 	local eEventType = peEvent:GetEventType()
 	local strType    = self:GetGameTypeString(eEventType)
@@ -198,48 +222,119 @@ function PvPHelper:OnPvPHelperClear()
 	self.pvphelperdb.MatchHistory = {}
 end
 
-function PvPHelper:UpdateBattlegroundRating()
+function PvPHelper:UpdateRating( eRatingType )
 	if not self.pvphelperdb.MatchHistory then
 		return
 	end
 
 	local nLastEntry = #self.pvphelperdb.MatchHistory
 	local tLastEntry = self.pvphelperdb.MatchHistory[nLastEntry]
-	local nRating    = tLastEntry["nBGRating"]
-	
-	tLastEntry["sRating"] = self:GetBattlegroundRatingString(nRating)
+	local nMatchType = tLastEntry["nMatchType"]
+	local result     = nil
+
+	if nMatchType == ktRatingTypeToMatchType[eRatingType] then
+		result = self:GetCurrentRating(ktRatingTypeToMatchType[eRatingType])
+	end
+
+	tLastEntry.tRating.nEndRating = result
 end
+
+function PvPHelper:GetResult(eMyTeam, eWinner)
+	if eMyTeam == eWinner then
+		return eResultTypes.Win
+	else
+		return eResultTypes.Loss
+	end
+end
+
+function PvPHelper:GetCurrentRating(eMatchType)
+	return MatchingGame:GetPvpRating(eMatchType) or 0
+end
+
+function PvPHelper:GetMatchType()
+	local nResult = nil
+	local tAllTypes =
+	{
+		MatchingGame.MatchType.Battleground,
+		MatchingGame.MatchType.Arena,
+		MatchingGame.MatchType.Warplot,
+		MatchingGame.MatchType.RatedBattleground,
+		MatchingGame.MatchType.OpenArena
+	}
+
+	for key, nType in pairs(tAllTypes) do
+		local tGames = MatchingGame.GetAvailableMatchingGames(nType)
+		for key, matchGame in pairs(tGames) do
+			if matchGame:IsInMatchingGame() == true then
+				result = nType
+			end
+		end
+	end
+
+	return result
+end
+
+function PvPHelper:UpdateMatchHistory(tMatch)
+	if self.pvphelperdb.MatchHistory == nil then
+		self.pvphelperdb.MatchHistory = {}
+	end
+	table.insert(self.pvphelperdb.MatchHistory, tMatch)
+	
+	tMatch = nil
+end
+
+-----------------------------------------------------------------------------------------------
+-- Data Formatting Functions
+-----------------------------------------------------------------------------------------------
 
 function PvPHelper:GetDateString(tDate)	
 	local strDate = string.format("%02d/%02d/%4d %s", tDate["nMonth"], tDate["nDay"], tDate["nYear"], tDate["strFormattedTime"])
 	return strDate
 end
 
-function PvPHelper:GetResultString(eMyTeam, eWinner)
-	if eMyTeam == eWinner then
-		return "Win"
-	else
-		return "Loss"
+function PvPHelper:GetMatchTypeString(nMatchType)
+	result = "N/A"
+
+	if nMatchType then
+		result = ktMatchTypes[nMatchType]
 	end
+
+	return result
 end
 
-function PvPHelper:GetBattlegroundRatingString(nPreviousRating)
-	local result = "N/A (N/A)"
-	local currentRating = MatchingGame.GetPvpRating(MatchingGame.RatingType.RatedBattleground)
-	
-	if nPreviousRating and currentRating then
-		currentRating  = currentRating["nRating"]
-		if nPreviousRating < currentRating then
-			result = string.format("%d (+%d)", currentRating, (currentRating - nPreviousRating))
-		elseif nPreviousRating > currentRating then
-			result = string.format("%d (-%d)", currentRating, (nPreviousRating - currentRating))
+function PvPHelper:GetResultString( nResultType )
+	local result = "N/A"
+	local ktResultTypes = {
+		eResultTypes.Win     = "Win",
+		eResultTypes.Loss    = "Loss",
+		eResultTypes.Forfeit = "Forfeit"
+	}
+
+	if nResultType then
+		result = ktResultTypes[nResultType]
+	end
+
+	return result
+end
+
+function PvPHelper:GetRatingString(tRating)
+	local result = "N/A"
+	local nPreviousRating = tRating.nBeginRating
+	local nCurrentRating  = tRating.nEndRating
+
+	if nPreviousRating and nCurrentRating then]
+		if nPreviousRating < nCurrentRating then
+			result = string.format("%d (+%d)", nCurrentRating, (nCurrentRating - nPreviousRating))
+		elseif nPreviousRating > nCurrentRating then
+			result = string.format("%d (-%d)", nCurrentRating, (nPreviousRating - nCurrentRating))
 		end
 	end
-	 
+
 	return result
 end
 
 -- Return a string which shows the current rating after difference
+-- TODO: Determine if this is needed anymore
 function PvPHelper:GetArenaRatingString(tMatchState, tRatingDeltas)
 	local eMyTeam = tMatchState.eMyTeam	
 	local result  = "N/A (N/A)"
@@ -255,32 +350,24 @@ function PvPHelper:GetArenaRatingString(tMatchState, tRatingDeltas)
 	return result
 end
 
-function PvPHelper:GetGameTypeString(eEventType)
-	local result = ""
-	
-	-- Leave these as if/elseif in case you want to add more specifics in the future
-	if eEventType == PublicEvent.PublicEventType_PVP_Battleground_HoldTheLine then
-		result = "Battleground"
-	elseif eEventType == PublicEvent.PublicEventType_PVP_Battleground_Vortex then
-		result = "Battleground"		
-	elseif eEventType == PublicEvent.PublicEventType_PVP_Warplot then
-		result = "Warplot"
-	elseif eEventType == PublicEvent.PublicEventType_PVP_Arena then
-		result = "Arena"
-	elseif eEventType == PublicEvent.PublicEventType_PVP_Battleground_Sabotage then
-		result = "Battleground"
+function PvPHelper:GetDateSortString( tDate )
+	local result = nil
+
+	if tDate then
+		result = tDate.nTickCount
 	end
 
 	return result
 end
 
-function PvPHelper:UpdateMatchHistory(tMatch)
-	if self.pvphelperdb.MatchHistory == nil then
-		self.pvphelperdb.MatchHistory = {}
+function PvPHelper:GetRatingSortString( tRating )
+	local result = nil
+
+	if tRating then
+		return tRating.nEndRating
 	end
-	table.insert(self.pvphelperdb.MatchHistory, tMatch)
-	
-	tMatch = nil
+
+	return result
 end
 
 -----------------------------------------------------------------------------------------------
@@ -299,29 +386,42 @@ function PvPHelper:HelperBuildGrid(wndParent, tData)
 
 	local nVScrollPos 	= wndGrid:GetVScrollPos()
 	local nSortedColumn	= wndGrid:GetSortColumn() or 1
-	local bAscending 	= wndGrid:IsSortAscending()
+	local bAscending 	  = wndGrid:IsSortAscending()
 	
 	wndGrid:DeleteAll()
 	
 	for row, tMatch in pairs(tData) do
 		local wndResultGrid = wndGrid
-		row = wndResultGrid:AddRow("")
-
-		for col, sDataKey in pairs(tDataKeys) do
-			local value = tMatch[sDataKey]
-			if type(value) == "table" then
-				wndResultGrid:SetCellSortText(row, col, value["nTickCount"])
-				wndResultGrid:SetCellText(row, col, self:GetDateString(value))
-			else
-				wndResultGrid:SetCellSortText(row, col, value)
-				wndResultGrid:SetCellText(row, col, value)
-			end
-		end
+		self:HelperBuildRow(wndResultGrid, tMatch)
 	end
 
 	wndGrid:SetVScrollPos(nVScrollPos)
 	wndGrid:SetSortColumn(nSortedColumn, bAscending)
 
+end
+
+function PvPHelper:HelperBuildRow(wndGrid, tMatchData)
+	row = wndGrid:AddRow("")
+
+	local ktFormatFunctions = {
+		["tDate"]      = self:GetDateString( n ),
+		["nMatchType"] = self:GetMatchTypeString( n ),
+		["nResult"]    = self:GetResultString( n ),
+		["tRating"]    = self:GetRatingString( n )
+	}
+
+	local ktSortFormatFunctions = {
+		["tDate"]      = self:GetDateSortString( n ),
+		["nMatchType"] = self:GetMatchTypeString( n ), -- No special sorting rules
+		["nResult"]    = self:GetResultString( n ),    -- No special sorting rules
+		["tRating"]    = self:GetRatingSortString( n )
+	}
+
+	for col, sDataKey in pairs(tDataKeys) do
+		local value = tMatchData[sDataKey]
+		wndResultGrid:SetCellText(row, col, ktFormatFunctions[sDataKey]( value ))
+		wndResultGrid:SetCellSortText(row, col, ktSortFormatFunctions[sDataKey]( value ))
+	end
 end
 
 function PvPHelper:OnClose( wndHandler, wndControl )
