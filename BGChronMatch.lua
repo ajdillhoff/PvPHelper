@@ -3,13 +3,14 @@
 -- BGChronMatch
 --------------------------------
 
-local BGChronMatch = {}
+BGChronMatch = {}
 BGChronMatch.__index = BGChronMatch
 
 
 setmetatable(BGChronMatch, {
   __call = function(cls, ...)
     local self = setmetatable({}, cls)
+    self:_init(...)
     return self
   end
 })
@@ -21,7 +22,7 @@ local eResultTypes = {
   Forfeit = 2
 }
 
-function BGChronMatch.new(o)
+function BGChronMatch:new(o)
   o = o or {}   -- create object if user does not provide one
   setmetatable(o, self)
   self.__index = self
@@ -84,7 +85,7 @@ function BGChronMatch:GetDateString()
     result = string.format("%02d/%02d/%4d %s", self.tDate["nMonth"], self.tDate["nDay"], self.tDate["nYear"], self.tDate["strFormattedTime"])
   end
 
-  return strDate
+  return result
 end
 
 function BGChronMatch:GetMatchTypeString()
@@ -99,15 +100,15 @@ end
 
 function BGChronMatch:GetResultString()
   local result = "N/A"
-  -- local ktResultTypes = { 
-  --   eResultTypes.Win     = "Win",
-  --   eResultTypes.Loss    = "Loss",
-  --   eResultTypes.Forfeit = "Forfeit"
-  -- }
+  local ktResultTypes = { 
+    eResultTypes.Win     = "Win",
+    eResultTypes.Loss    = "Loss",
+    eResultTypes.Forfeit = "Forfeit"
+  }
 
-  -- if self.nResultType then
-  --   result = ktResultTypes[self.nResultType]
-  -- end
+  if self.nResultType then
+    result = ktResultTypes[self.nResultType]
+  end
 
   return result
 end
